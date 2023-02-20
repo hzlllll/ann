@@ -7,7 +7,7 @@ import torch
 
 
 
-# 定义了图的结构
+# define the class for graph
 class Graph:
     def __init__(self, vertices_path, edges_path,
                  train_queries_path, test_queries_path,

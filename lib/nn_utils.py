@@ -24,6 +24,7 @@ class GraphConvolution(nn.Module):
         if self.bias is not None:
             self.bias.data.fill_(0.0)
 
+    # Like the definition of GCN, H=A(XW) where A is a sparse matrix
     def forward(self, input, adj):
         support = torch.mm(input, self.weight)
         output = torch.spmm(adj, support)
@@ -54,6 +55,7 @@ class GraphConvolutionBlock(nn.Module):
         if normalize_out:
             self.out_norm = nn.LayerNorm(out_size)
 
+    # A block is combined with a graphConvolution, a ELU activation, a linear and a residual
     def forward(self, inp, adj):
         hid = self.conv(inp, adj)
         if hasattr(self, 'hid_norm'):

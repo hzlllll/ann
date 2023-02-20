@@ -1,6 +1,8 @@
 from heapq import heappush, heappop, nlargest, nsmallest
 import numpy as np
 
+
+# define three function of distance 
 DISTANCES = {
     'euclidian': lambda a, b: ((a - b) ** 2).sum(-1),
     'negative_dot': lambda a, b: - (a * b).sum(-1),
