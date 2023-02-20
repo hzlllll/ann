@@ -1,0 +1,10 @@
+numpy==1.16.0
+torch
+joblib==0.13.2
+pandas
+matplotlib
+tqdm
+tensorboardX
+bokeh
+scikit-learn
+prefetch_generator
