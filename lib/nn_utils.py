@@ -55,7 +55,7 @@ class GraphConvolutionBlock(nn.Module):
         if normalize_out:
             self.out_norm = nn.LayerNorm(out_size)
 
-    # A block is combined with a graphConvolution, a ELU activation, a linear and a residual
+    # A block is combined with a graphConvolution, a ELU activation, a linear and (a residual)
     def forward(self, inp, adj):
         hid = self.conv(inp, adj)
         if hasattr(self, 'hid_norm'):

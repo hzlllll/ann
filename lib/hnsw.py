@@ -40,8 +40,8 @@ class HNSW:
 
         topResults, candidateSet = [], []
         distance = self.get_distance(query, self.graph.vertices[vertex_id])
-        heappush(topResults, (-distance, vertex_id))
-        heappush(candidateSet, (distance, vertex_id))
+        heappush(topResults, (-distance, vertex_id)) # the largest distance in the top
+        heappush(candidateSet, (distance, vertex_id)) # the smallest distance in the top
         lowerBound = distance
         num_hops, dcs = 1, 1
 
@@ -63,7 +63,7 @@ class HNSW:
                     if len(topResults) > self.ef:
                         heappop(topResults)
 
-                    lowerBound = -nsmallest(1, topResults)[0][0]
+                    lowerBound = -nsmallest(1, topResults)[0][0] # the largest distance as the bound
 
                 dcs += 1
                 if dcs >= self.max_dcs: break
@@ -78,6 +78,7 @@ class HNSW:
             top_results_heap=topResults, visited_ids=visited_ids
         )
 
+    # if not hierarcial, use the initial id, else find the nearest vertex id from the highest level to lowest level
     def get_initial_vertex_id(self, query=None, **kwargs):
         if not self.hierarcical:
             return self.graph.initial_vertex_id
@@ -152,6 +153,7 @@ class WalkerHNSW(HNSW):
         # Below: initial edge (loop at initial vertex id)
         # a fake edge representing the starting point of search algo
         initial_vertex_vector = agent.get_vertex_vectors([initial_vertex_id], state=state, **kwargs)[0]
+        # .item() is used for better precision for calculation
         initial_distance = self.distance_for_routing(query_vector, initial_vertex_vector).item()
 
         candidates = []  # heap of vertices from smallest predicted distance to largest
@@ -217,7 +219,7 @@ class WalkerHNSW(HNSW):
         else:
             # manually select best from top-k vertices acc. to actual distance
             verification_distances = self.distance_for_verification(query, self.graph.vertices[vertices_for_verification])
-            # ^-- [len(verification_top)]
+            # ^-- [len(verification_top)]  sort by the true distance
             best_vertex_id = vertices_for_verification[np.argmin(verification_distances.data.cpu().numpy())]
             verification_dcs = len(verification_distances)
 
