@@ -2,6 +2,7 @@
 import torch, torch.nn as nn
 from collections import namedtuple, defaultdict
 from .nn_utils import GraphConvolutionBlock
+from .nn_gat_utils import SpGAT,GAT
 
 
 class BaseWalkerAgent(nn.Module):
@@ -64,6 +65,57 @@ class SimpleWalkerAgent(BaseWalkerAgent):
         return vectors
 
 
+# TODO modify init and prepare_state function
+class GATWalkerAgent(SimpleWalkerAgent):
+    State = namedtuple("AgentState", ['vertices', 'hidden'])
+
+    def __init__(self, nfeat, nhid, hidden_size, nclass, dropout, alpha, nheads, activation=nn.ELU(),residual=False, project_query=True, **kwargs):
+        """ Walker agent with graph-attention network """
+        super().__init__(nfeat,  hidden_size, nclass)
+        assert (not residual) or (nclass == nfeat), 'residual can only be used if output size == vertex size'
+        assert (project_query or (nfeat == nclass)), 'need to project query to output size'
+        self.residual, self.project_query = residual, project_query
+        self.block = SpGAT(nfeat, nhid, nclass, dropout, alpha, nheads)
+        if project_query:
+            self.query_proj = nn.Linear(nfeat, nclass,
+                                        bias=nclass != nfeat) 
+
+    def prepare_state(self, graph, device='cuda', **kwargs):
+        """ Pre-computes graph representation for further use in edge prediction """
+        adj_edges = torch.tensor([(from_i, to_i) for from_i in graph.edges
+                                  for to_i in list(graph.edges[from_i]) + [from_i]], device=device)
+        # d = torch.tensor([(len(graph.edges[from_i]) + 1) for from_i in graph.edges], device=device)
+        # d = 1. / d.type(torch.float32)
+        # adj_values = d[adj_edges[:, 0]]
+        # adj = torch.sparse_coo_tensor(adj_edges.t(), adj_values, dtype=torch.float32, device=device)
+        # idx = np.array(idx_features_labels[:, 0], dtype=np.int32)
+        # idx_map = {j: i for i, j in enumerate(idx)}
+        # edges_unordered = np.genfromtxt("{}{}.cites".format(path, dataset), dtype=np.int32)
+        # edges = np.array(list(map(idx_map.get, edges_unordered.flatten())), dtype=np.int32).reshape(edges_unordered.shape)
+        # adj = sp.coo_matrix((np.ones(edges.shape[0]), (edges[:, 0], edges[:, 1])), shape=(labels.shape[0], labels.shape[0]), dtype=np.float32)
+
+        # # build symmetric adjacency matrix
+        # adj = adj + adj.T.mulstiply(adj.T > adj) - adj.multiply(adj.T > adj)
+        # adj = normalize_adj(adj + sp.eye(adj.shape[0]))
+        # adj = torch.FloatTensor(np.array(adj.todense()))
+        
+        # print(adj_edges)
+        hidden = graph.vertices.to(device)
+        hidden = self.block(hidden,adj_edges)
+        return self.State(vertices=graph.vertices, hidden=hidden)
+    
+    
+    def get_vertex_vectors(self, vertex_ids, *, state, device='cuda', **kwargs):
+        """
+        :param vertex_ids: indices of vertices to embed [batch_size]
+        :return: vector representation for vertices shape: [batch_size, output_size]
+        """
+        hidden = state.hidden[vertex_ids, :].to(device=device)
+        vectors = self.network(hidden)
+        if self.residual:
+            vectors += state.vertices[vertex_ids, :].to(device=device)
+        return vectors
+    
 class GCNWalkerAgent(SimpleWalkerAgent):
     State = namedtuple("AgentState", ['vertices', 'hidden'])
 

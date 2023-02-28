@@ -62,7 +62,7 @@ class SupervisedWalkerTrainer:
     def compute_metrics_on_batch(self, batch_records, **kwargs):
         # step 1: compute vectors for queries
         state = self.agent.prepare_state(self.hnsw.graph, device=self.device, **kwargs)
-        batch_queries = torch.tensor([rec['query'] for rec in batch_records], device=self.device)
+        batch_queries = torch.tensor(np.array([rec['query'] for rec in batch_records]), device=self.device)
         batch_query_vectors = self.agent.get_query_vectors(batch_queries, state=state,
                                                            device=self.device, **kwargs)
 
@@ -91,14 +91,14 @@ class SupervisedWalkerTrainer:
                 num_vertices = (len(row['positive_ids']) + len(row['negative_ids']))
                 query_ix.extend([i] * num_vertices)
                 vertex_ix.extend([vertex_to_ix[vertex_id] for vertex_id in row['positive_ids'] + row['negative_ids']])
-                is_numerator.extend([1] * len(row['positive_ids']) + [0] * len(row['negative_ids']))
+                is_numerator.extend([True] * len(row['positive_ids']) + [False] * len(row['negative_ids']))
                 row_ix.extend([row_index] * num_vertices)
                 col_ix.extend(range(num_vertices))
                 row_weights.append(row.get('weight', 1.0))
                 row_index += 1
 
         distances = self.hnsw.distance_for_routing(batch_query_vectors[query_ix], batch_vertex_vectors[vertex_ix])
-        is_numerator = torch.tensor(is_numerator, dtype=torch.uint8, device=distances.device)
+        is_numerator = torch.tensor(is_numerator, dtype=torch.bool, device=distances.device)
         row_ix = torch.tensor(row_ix, dtype=torch.int64, device=distances.device)
         col_ix = torch.tensor(col_ix, dtype=torch.int64, device=distances.device)
         row_weights = torch.tensor(row_weights, dtype=torch.float32, device=distances.device)
