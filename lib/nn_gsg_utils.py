@@ -141,6 +141,13 @@ class SageGCN(nn.Module):
             self.input_dim, output_dim, self.aggr_hidden_method)
 
 class GraphSage(nn.Module):
+    """SageGCN层定义
+        Args:
+            input_dim: 输入特征的维度
+            hidden_dim: 隐层特征的维度的列表, 不断聚合特征
+            num_neighbors_list: 聚合采样的节点数目构成的列表, 通常长度为2, 二者乘积小于500
+            node_features_list: 节点的特征列表
+        """
     def __init__(self, input_dim, hidden_dim,
                  num_neighbors_list):
         super(GraphSage, self).__init__()
