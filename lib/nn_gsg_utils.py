@@ -57,15 +57,15 @@ class NeighborAggregator(nn.Module):
         self.output_dim = output_dim
         self.use_bias = use_bias
         self.aggr_method = aggr_method
-        self.weight = nn.Parameter(torch.Tensor(input_dim, output_dim))
+        self.weight = nn.Parameter(torch.FloatTensor(input_dim, output_dim))
         if self.use_bias:
-            self.bias = nn.Parameter(torch.Tensor(self.output_dim))
+            self.bias = nn.Parameter(torch.FloatTensor(self.output_dim))
         self.reset_parameters()
     
     def reset_parameters(self):
-        init.kaiming_uniform_(self.weight)
+        init.kaiming_uniform_(self.weight.data)
         if self.use_bias:
-            init.zeros_(self.bias)
+            self.bias.data.fill_(0.0)
 
     def forward(self, neighbor_feature):
         if self.aggr_method == "mean":
@@ -77,8 +77,7 @@ class NeighborAggregator(nn.Module):
         else:
             raise ValueError("Unknown aggr type, expected sum, max, or mean, but got {}"
                              .format(self.aggr_method))
-        
-        neighbor_hidden = torch.matmul(aggr_neighbor, self.weight)
+        neighbor_hidden = torch.mm(aggr_neighbor, self.weight)
         if self.use_bias:
             neighbor_hidden += self.bias
 
@@ -113,15 +112,15 @@ class SageGCN(nn.Module):
         self.activation = activation
         self.aggregator = NeighborAggregator(input_dim, hidden_dim,
                                              aggr_method=aggr_neighbor_method)
-        self.b = nn.Parameter(torch.Tensor(input_dim, hidden_dim))
+        self.b = nn.Parameter(torch.FloatTensor(input_dim, hidden_dim))
         self.reset_parameters()
     
     def reset_parameters(self):
-        init.kaiming_uniform_(self.b)
+        init.kaiming_uniform_(self.b.data)
 
     def forward(self, src_node_features, neighbor_node_features):
         neighbor_hidden = self.aggregator(neighbor_node_features)
-        self_hidden = torch.matmul(src_node_features, self.b)
+        self_hidden = torch.mm(src_node_features, self.b)
         
         if self.aggr_hidden_method == "sum":
             hidden = self_hidden + neighbor_hidden

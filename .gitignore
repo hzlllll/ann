@@ -12,6 +12,7 @@ notebooks/.ipynb_checkpoints/*
 lib/__pycache__/*
 lib/bfs_swig/__pycache__/*
 lib/bfs_swig/build/*
+lib/data/*
 
 env.sh
 # Byte-compiled / optimized / DLL files

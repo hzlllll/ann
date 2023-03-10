@@ -3,7 +3,8 @@ import torch, torch.nn as nn
 from collections import namedtuple, defaultdict
 from .nn_utils import GraphConvolutionBlock
 from .nn_gat_utils import SpGAT,GAT
-from .nn_gsg_utils import GraphSage
+from .nn_gsg_utils import GraphSage,multihop_sampling
+from .nn_gsgm_utils import GraphSAGE
 import numpy as np
 
 class BaseWalkerAgent(nn.Module):
@@ -225,25 +226,60 @@ class GSGWalkerAgent(SimpleWalkerAgent):
         assert (not residual) or (nclass == nfeat), 'residual can only be used if output size == vertex size'
         assert (project_query or (nfeat == nclass)), 'need to project query to output size'
         self.residual, self.project_query = residual, project_query
-        self.block=GraphSage(nfeat,[nhid,nclass],[20,20])
+        self.num_neighbors_list=[10,10]
+        self.block=GraphSage(nfeat,[nhid,nclass],self.num_neighbors_list)
         if project_query:
             self.query_proj = nn.Linear(nfeat, nclass,
                                         bias=nclass != nfeat) 
-    
-    #TODO get node_feature_list
+    #TODO 修改采样以及最后的模型
     def prepare_state(self, graph, device='cuda', **kwargs):
         """ Pre-computes graph representation for further use in edge prediction """
         # adj_edges = torch.tensor([(from_i, to_i) for from_i in graph.edges
         #                           for to_i in list(graph.edges[from_i]) + [from_i]], device=device)
+        x=graph.vertices.to(device)
+        train_index=list(range(len(x)))
+        # train_index=graph.train_queries.to(device)
+        src_index = np.random.choice(train_index, int(len(x)/1000))
+        sampling_result = multihop_sampling(src_index, self.num_neighbors_list, graph.edges)
+        sampling_x=[x[idx].float().to(device) for idx in sampling_result]
+        hidden = self.block(sampling_x)
+        return self.State(vertices=graph.vertices, hidden=hidden)
+    
+    
+    def get_vertex_vectors(self, vertex_ids, *, state, device='cuda', **kwargs):
+        """
+        :param vertex_ids: indices of vertices to embed [batch_size]
+        :return: vector representation for vertices shape: [batch_size, output_size]
+        """
+        hidden = state.hidden[vertex_ids, :].to(device=device)
+        vectors = self.network(hidden)
+        if self.residual:
+            vectors += state.vertices[vertex_ids, :].to(device=device)
+        return vectors
+    
 
-        # batch_src_index = np.random.choice(train_index, size=(BTACH_SIZE,))
-        # batch_sampling_result = multihop_sampling(batch_src_index, NUM_NEIGHBORS_LIST, data.adjacency_dict)
-        # batch_sampling_x = [torch.from_numpy(x[idx]).float().to(DEVICE) for idx in batch_sampling_result]
-        # batch_train_logits = model(batch_sampling_x)
-        hidden = graph.vertices.to(device)
-        node_feature_list=[]
-        hidden = self.block(node_feature_list)
-        # hidden = self.block(hidden,adj_edges)
+
+
+class GSGMWalkerAgent(SimpleWalkerAgent):
+    State = namedtuple("AgentState", ['vertices', 'hidden'])
+    def __init__(self, nfeat, nhid, hidden_size, nclass, activation=nn.ELU(),residual=False, project_query=True, **kwargs):
+        """ Walker agent with graph-attention network """
+        super().__init__(nfeat,  hidden_size, nclass)
+        assert (not residual) or (nclass == nfeat), 'residual can only be used if output size == vertex size'
+        assert (project_query or (nfeat == nclass)), 'need to project query to output size'
+        self.residual, self.project_query = residual, project_query
+        self.block=GraphSAGE(nfeat,nhid,nclass)
+        if project_query:
+            self.query_proj = nn.Linear(nfeat, nclass,
+                                        bias=nclass != nfeat) 
+    #TODO 修改采样以及最后的模型
+    def prepare_state(self, graph, device='cuda', **kwargs):
+        """ Pre-computes graph representation for further use in edge prediction """
+        adj_edges = torch.tensor([(from_i, to_i) for from_i in graph.edges
+                                  for to_i in list(graph.edges[from_i])], device=device)
+        x=graph.vertices.to(device)
+        
+        hidden = self.block(x,adj_edges.t())
         return self.State(vertices=graph.vertices, hidden=hidden)
     
     
