@@ -10,6 +10,7 @@ import lib
 from lib.utils import global_variables, require_variables, iterate_minibatches
 from lib.nn_utils import get_device_of
 
+#TODO 引入强化学习中的奖励函数和塑造函数
 
 class SupervisedWalkerTrainer:
     def __init__(self, agent, hnsw, oracle, writer=None,

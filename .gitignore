@@ -13,6 +13,7 @@ lib/__pycache__/*
 lib/bfs_swig/__pycache__/*
 lib/bfs_swig/build/*
 lib/data/*
+notebooks/test*.out
 
 env.sh
 # Byte-compiled / optimized / DLL files

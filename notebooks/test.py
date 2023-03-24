@@ -41,26 +41,27 @@ total_dcs = 128
 routing_dcs = 120
 routing_vector_size = 96
 verification_top_k = 8
-architecture = 'gcn'      # 'gcn' or 'ffn' or whatever you define manually
-max_batches  = 200       # num training iterations; use float('inf') for unlimited 60000
+
+architecture = 'sgc'      # 'gcn' or 'ffn' or whatever you define manually
+max_batches  = 10000       # num training iterations; use float('inf') for unlimited 60000
 
 # one cycle learning rate schedule
 learning_rate_base = 1e-3
 warmup_steps = 5000
 decay_rate = 1./3
 learning_rate_min = 1e-5
-batch_size = 128
-dev_batch_size = 20
+batch_size = 1024
+dev_batch_size = 100
 
 # batch generator
 sampling_temperature = 1.0
 sampling_chunk_size = 10000
-n_jobs = 2
+n_jobs = 8
 margin = 5
 
-exp_name = '{data_name}_dcs{total_dcs}_{architecture}_size{routing_vector_size}_routing{routing_dcs}_verification{verification_top_k}'.format(
+exp_name = '''{data_name}_dcs{total_dcs}_{architecture}_size{routing_vector_size}_routing{routing_dcs}_verification{verification_top_k}_maxbatch{max_batches}_e-dist'''.format(
     data_name=osp.split(DATA_DIR)[-1], total_dcs=total_dcs, routing_vector_size=routing_vector_size, routing_dcs=routing_dcs,
-    verification_top_k=verification_top_k, architecture=architecture
+    verification_top_k=verification_top_k, architecture=architecture,max_batches=max_batches
 )
 print('exp name:', exp_name)
 exp_path='/home/huzhilong/learning-to-route-online/notebooks/runs/' + exp_name
@@ -110,6 +111,16 @@ elif architecture == 'gsg':
 elif architecture == 'gsgm':
     agent = lib.walker_agent.GSGMWalkerAgent(
         nfeat=graph.vertices.shape[1], nhid=256, hidden_size=1024, nclass=routing_vector_size, 
+        residual=not is_compressed, project_query=is_compressed
+    ).to(device='cuda')
+elif architecture == 'gatm':
+    agent = lib.walker_agent.GATMWalkerAgent(
+        nfeat=graph.vertices.shape[1], nhid=32, nhead=4,hidden_size=1024, nclass=routing_vector_size, 
+        residual=not is_compressed, project_query=is_compressed
+    ).to(device='cuda')
+elif architecture == 'sgc':
+    agent = lib.walker_agent.SGCWalkerAgent(
+        nfeat=graph.vertices.shape[1], k=4,hidden_size=1024, nclass=routing_vector_size, 
         residual=not is_compressed, project_query=is_compressed
     ).to(device='cuda')
 else:
@@ -163,7 +174,7 @@ for batch_records in train_batcher:
         print('Done')
         
     if trainer.step % 100 == 0:
-        #clear_output(True)
+        # clear_output(True)
         # plt.figure(figsize=[18, 6])
         # plt.subplot(1, 3, 1)
         # plt.title('train loss over time'); plt.grid();
@@ -180,9 +191,30 @@ for batch_records in train_batcher:
         # plt.plot(50*(np.arange(len(total_dev_recall_history)) + 1), total_dev_recall_history, c='r')
         # plt.show()
         
-        print("step=%i, mean_loss=%.3f, time=%.3f" % 
+        print("\nstep=%i, mean_loss=%.3f, time=%.3f" % 
               (len(train_loss_history), np.mean(train_loss_history[-100:]), metrics_t['step_time']))
-        print('_' * 100)
-    
+        print("step=%i, mean_acc=%.3f, time=%.3f" % 
+              (len(train_acc_history), np.mean(train_acc_history[-100:]), metrics_t['step_time']))
+        print("step=%i, mean_rec=%.3f, time=%.3f" % 
+              (len(dev_recall_history)*100, np.mean(dev_recall_history[-1:]), metrics_t['step_time']))
+        # print(moving_average(train_loss_history,span=50))
+        # print(moving_average(train_acc_history,span=50))
+        # print(moving_average(dev_recall_history,span=10))
+        
     if trainer.step > max_batches: break
         
+def compute_recalls(queries, gt, hnsw=hnsw, agent=agent, wrap=lambda x:x, **kwargs):
+    """ Compute recall, mean distance computations and mean number of hops """
+    with torch.no_grad():
+        state = agent.prepare_state(graph, device='cuda')
+        predictions = [hnsw.find_nearest(q, state=state, agent=agent) for q in wrap(queries)]
+        
+    answers = [prediction['best_vertex_id'] for prediction in predictions]
+    mean_recall = np.mean([best in gt for best, gt in zip(answers, gt)])
+    distances = [prediction['routing_dcs'] for prediction in predictions]
+    hops = [prediction['num_hops'] for prediction in predictions]
+    return dict(recall=mean_recall, dcs=np.mean(distances), hops=np.mean(hops))
+
+
+metrics = compute_recalls(graph.test_queries, graph.test_gt)
+print("\nEval at step {step}: recall: {recall}, dcs: {dcs}, hops: {hops}".format(step=trainer.step, **metrics))

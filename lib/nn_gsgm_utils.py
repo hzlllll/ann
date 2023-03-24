@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from torch_geometric.utils import scatter
 import torch_geometric.nn as pyg_nn
 from torch_geometric.datasets import Planetoid
+from torch_geometric.nn import SGConv
 
 
 
@@ -33,7 +34,7 @@ class SAGEConv(nn.Module):
 
 # 2.定义GraphSAGE网络
 class GraphSAGE(nn.Module):
-    def __init__(self, num_node_features, num_hidden_layer ,num_classes, is_class=False):
+    def __init__(self, num_node_features, num_hidden_layer ,num_classes, is_class=False,residual=False):
         """
         num_node_features: feature数目的矩阵
         num_classes: 最后类别数目
@@ -44,20 +45,39 @@ class GraphSAGE(nn.Module):
         self.conv2 = SAGEConv(in_channels=num_hidden_layer,
                               out_channels=num_classes)
         self.is_class = is_class
-        
-    def forward(self, x, edge_index):
+        self.residual = residual
+
+    def forward(self, inp, edge_index):
         """
-        x:  Node数目*feature数目的矩阵
+        inp:  Node数目*feature数目的矩阵
         edge_index: 2*edge数的矩阵  每一列代表边的编号
         """
         
-        x = self.conv1(x, edge_index)
+        x = self.conv1(inp, edge_index)
         x = F.relu(x)
         x = F.dropout(x, training=self.training)
         x = self.conv2(x, edge_index)
         if self.is_class:
             return F.log_softmax(x, dim=1)
         else:
+            if self.residual:
+                x += inp
+            return x
+
+class SGC(nn.Module):
+    def __init__(self, in_feats, out_feats, k, is_class=False, residual=False):
+        super(SGC, self).__init__()
+        self.conv = SGConv(in_feats, out_feats, K=k, cached=True)
+        self.residual = residual
+        self.is_class = is_class
+
+    def forward(self, inp, edge_index):
+        x = self.conv(inp, edge_index)
+        if self.is_class:
+            return F.log_softmax(x, dim=1)
+        else:
+            if self.residual:
+                x += inp
             return x
 
 if __name__=="__main__":
